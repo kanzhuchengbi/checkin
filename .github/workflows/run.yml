@@ -4,18 +4,28 @@ on:
   workflow_dispatch:
   push:
   schedule:
-    - cron: 10 16 * * *
+    # 北京时间 00:10 = UTC 16:10
+    - cron: '10 16 * * *'
 
 jobs:
   run:
     runs-on: ubuntu-latest
+
     steps:
-      - uses: actions/checkout@v3
-      - uses: actions/setup-node@v3
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
         with:
-          node-version: 18
+          node-version: 20
+
       - run: npm ci
+
       - run: npm run main
         env:
-          GLADOS: ${{ secrets.GLADOS }}
+          RAILGUN: ${{ secrets.RAILGUN }}
           NOTIFY: ${{ secrets.NOTIFY }}
+          # 如果默认接口不对，再在 Secrets 里加下面这些
+          RAILGUN_BASE_URL: ${{ secrets.RAILGUN_BASE_URL }}
+          RAILGUN_CHECKIN_PATH: ${{ secrets.RAILGUN_CHECKIN_PATH }}
+          RAILGUN_STATUS_PATH: ${{ secrets.RAILGUN_STATUS_PATH }}
+          RAILGUN_TOKEN: ${{ secrets.RAILGUN_TOKEN }}
