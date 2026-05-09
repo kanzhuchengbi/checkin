@@ -1,52 +1,108 @@
-const glados = async () => {
-  const cookie = process.env.GLADOS
-  if (!cookie) return
+const BASE_URL = process.env.RAILGUN_BASE_URL || 'https://railgun.info'
+const COOKIE = process.env.RAILGUN || process.env.GLADOS
+const CHECKIN_PATH = process.env.RAILGUN_CHECKIN_PATH || '/api/user/checkin'
+const STATUS_PATH = process.env.RAILGUN_STATUS_PATH || '/api/user/status'
+const CHECKIN_TOKEN = process.env.RAILGUN_TOKEN || 'railgun.info'
+
+async function requestJson(path, options = {}) {
+  const res = await fetch(`${BASE_URL}${path}`, {
+    ...options,
+    headers: {
+      accept: 'application/json, text/plain, */*',
+      cookie: COOKIE,
+      origin: BASE_URL,
+      referer: `${BASE_URL}/console/checkin`,
+      'user-agent':
+        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120 Safari/537.36',
+      ...(options.headers || {}),
+    },
+  })
+
+  const text = await res.text()
+
+  let data
   try {
-    const headers = {
-      'cookie': cookie,
-      'referer': 'https://glados.cloud/console/checkin',
-      'user-agent': 'Mozilla/4.0 (compatible; MSIE 7.0; Windows NT 6.0)',
-    }
-    const checkin = await fetch('https://glados.cloud/api/user/checkin', {
+    data = JSON.parse(text)
+  } catch {
+    data = { raw: text }
+  }
+
+  if (!res.ok) {
+    throw new Error(`HTTP ${res.status}: ${JSON.stringify(data)}`)
+  }
+
+  return data
+}
+
+async function railgun() {
+  if (!COOKIE) {
+    return ['Railgun Checkin Error', 'Missing cookie. Please set secret RAILGUN.']
+  }
+
+  try {
+    const checkin = await requestJson(CHECKIN_PATH, {
       method: 'POST',
-      headers: { ...headers, 'content-type': 'application/json' },
-      body: '{"token":"glados.cloud"}',
-    }).then((r) => r.json())
-    const status = await fetch('https://glados.cloud/api/user/status', {
-      method: 'GET',
-      headers,
-    }).then((r) => r.json())
+      headers: {
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({ token: CHECKIN_TOKEN }),
+    })
+
+    let statusText = ''
+    try {
+      const status = await requestJson(STATUS_PATH, { method: 'GET' })
+      const leftDays =
+        status?.data?.leftDays ??
+        status?.data?.left_days ??
+        status?.leftDays ??
+        status?.left_days
+
+      if (leftDays !== undefined) {
+        statusText = `Left Days ${Number(leftDays)}`
+      } else {
+        statusText = `Status: ${JSON.stringify(status)}`
+      }
+    } catch (e) {
+      statusText = `Status API failed: ${e.message}`
+    }
+
     return [
-      'Checkin OK',
-      `${checkin.message}`,
-      `Left Days ${Number(status.data.leftDays)}`,
+      'Railgun Checkin OK',
+      checkin?.message || checkin?.msg || JSON.stringify(checkin),
+      statusText,
     ]
   } catch (error) {
     return [
-      'Checkin Error',
+      'Railgun Checkin Error',
       `${error}`,
       `<${process.env.GITHUB_SERVER_URL}/${process.env.GITHUB_REPOSITORY}>`,
     ]
   }
 }
 
-const notify = async (contents) => {
+async function notify(contents) {
   const token = process.env.NOTIFY
-  if (!token || !contents) return
-  await fetch(`https://www.pushplus.plus/send`, {
+  if (!token || !contents) {
+    console.log(contents?.join('\n') || 'No output')
+    return
+  }
+
+  await fetch('https://www.pushplus.plus/send', {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({
       token,
       title: contents[0],
-      content: contents.join('<br>'),
+      content: contents.join('\n'),
       template: 'markdown',
     }),
   })
 }
 
-const main = async () => {
-  await notify(await glados())
+async function main() {
+  const result = await railgun()
+  console.log(result.join('\n'))
+  await notify(result)
 }
 
 main()
